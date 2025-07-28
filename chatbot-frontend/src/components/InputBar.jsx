@@ -21,17 +21,21 @@ const InputBar = ({
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
+      console.log('Speech recognition not supported in this browser');
       setIsSpeechSupported(false);
       return;
     }
 
+    console.log('Speech recognition supported, initializing...');
     recognitionRef.current = new SpeechRecognition();
     recognitionRef.current.continuous = false;
     recognitionRef.current.interimResults = false;
     recognitionRef.current.lang = 'en-US';
 
     recognitionRef.current.onresult = (event) => {
+      console.log('Speech recognition result:', event.results);
       const transcript = event.results[0][0].transcript;
+      console.log('Transcript:', transcript);
       setMessage(prev => prev + transcript);
       
       if (autoSendOnVoice) {
@@ -42,7 +46,7 @@ const InputBar = ({
     };
 
     recognitionRef.current.onerror = (event) => {
-      console.error('Speech recognition error', event.error);
+      console.error('Speech recognition error:', event.error);
       if (event.error === 'not-allowed') {
         setPermissionError(true);
       }
@@ -50,7 +54,12 @@ const InputBar = ({
     };
 
     recognitionRef.current.onend = () => {
+      console.log('Speech recognition ended');
       stopRecording();
+    };
+
+    recognitionRef.current.onstart = () => {
+      console.log('Speech recognition started');
     };
 
     return () => {
@@ -61,12 +70,17 @@ const InputBar = ({
   }, [autoSendOnVoice]);
 
   const startRecording = () => {
-    if (!isSpeechSupported) return;
+    console.log('Attempting to start recording...');
+    if (!isSpeechSupported) {
+      console.log('Speech not supported');
+      return;
+    }
     
     try {
       recognitionRef.current.start();
       setIsRecording(true);
       setPermissionError(false);
+      console.log('Recording started successfully');
     } catch (error) {
       console.error('Failed to start recording:', error);
       setPermissionError(true);
@@ -75,6 +89,7 @@ const InputBar = ({
   };
 
   const stopRecording = () => {
+    console.log('Stopping recording...');
     if (recognitionRef.current && isRecording) {
       recognitionRef.current.stop();
     }
@@ -82,6 +97,7 @@ const InputBar = ({
   };
 
   const toggleRecording = () => {
+    console.log('Toggle recording, current state:', isRecording);
     if (isRecording) {
       stopRecording();
     } else {
@@ -175,11 +191,15 @@ const InputBar = ({
                 onClick={toggleRecording}
                 disabled={disabled}
                 variant="ghost"
-                className={`p-2.5 rounded-full ${isRecording ? 'animate-gentlePulse text-red-500' : 'text-gray-500 hover:text-indigo-600'}`}
+                className={`p-2.5 rounded-full transition-all duration-200 ${
+                  isRecording 
+                    ? 'animate-gentlePulse bg-red-50 text-red-500 hover:bg-red-100' 
+                    : 'text-gray-500 hover:text-indigo-600 hover:bg-gray-50'
+                }`}
                 aria-label={isRecording ? "Stop recording" : "Start voice input"}
                 title={isRecording ? "Stop recording" : "Speak"}
               >
-                <HiMicrophone className="h-5 w-5" />
+                <HiMicrophone className={`h-5 w-5 ${isRecording ? 'scale-110' : ''}`} />
               </Button>
             )}
             
@@ -211,10 +231,22 @@ const InputBar = ({
         
         <div className="text-xs">
           {permissionError && (
-            <span className="text-red-500">Microphone access denied</span>
+            <span className="text-red-500 flex items-center gap-1">
+              <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+              Microphone access denied
+            </span>
           )}
           {!isSpeechSupported && (
-            <span className="text-yellow-600">Voice input not supported</span>
+            <span className="text-yellow-600 flex items-center gap-1">
+              <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+              Voice input not supported
+            </span>
+          )}
+          {isSpeechSupported && !permissionError && (
+            <span className="text-green-600 flex items-center gap-1">
+              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+              Voice input ready
+            </span>
           )}
         </div>
       </div>

@@ -1,6 +1,9 @@
 import os
 from openai import OpenAI
 import re
+import base64
+from io import BytesIO
+from gtts import gTTS
 from firebase_utils import (
     save_message_to_session,
     get_session_messages,

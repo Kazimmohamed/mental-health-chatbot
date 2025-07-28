@@ -7,17 +7,28 @@ import { auth } from './firebase';
  */
 export async function getSessionHistory(userId) {
     const user = auth.currentUser;
-    if (!user) {
+    const isManualUser = localStorage.getItem("isManualUser") === "true";
+    
+    if (!user && !isManualUser) {
         throw new Error("Authentication error: No user is signed in.");
     }
 
     try {
-        const token = await user.getIdToken(); // Get token to authenticate with the backend
+        let headers = {};
+        
+        if (isManualUser) {
+            // For manual users, use custom header
+            const manualUserId = localStorage.getItem("customUserID");
+            headers['X-User-ID'] = manualUserId;
+        } else {
+            // For Firebase users, use token
+            const token = await user.getIdToken();
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        
         const response = await fetch(`http://localhost:5000/history/${userId}`, {
             method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
+            headers
         });
 
         if (!response.ok) {
@@ -41,18 +52,30 @@ export async function getSessionHistory(userId) {
  */
 export async function sendMessageToBackend(sessionId, inputText) {
     const user = auth.currentUser;
-    if (!user) {
+    const isManualUser = localStorage.getItem("isManualUser") === "true";
+    
+    if (!user && !isManualUser) {
         throw new Error("Authentication error: No user is signed in.");
     }
 
     try {
-        const token = await user.getIdToken();
+        let headers = {
+            'Content-Type': 'application/json'
+        };
+        
+        if (isManualUser) {
+            // For manual users, use custom header
+            const manualUserId = localStorage.getItem("customUserID");
+            headers['X-User-ID'] = manualUserId;
+        } else {
+            // For Firebase users, use token
+            const token = await user.getIdToken();
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        
         const response = await fetch('http://localhost:5000/text', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
+            headers,
             body: JSON.stringify({
                 session_id: sessionId,
                 input_text: inputText
@@ -66,6 +89,51 @@ export async function sendMessageToBackend(sessionId, inputText) {
         return data;
     } catch (error) {
         console.error('Error sending message:', error);
+        throw error;
+    }
+}
+
+/**
+ * Generates TTS audio for the given text.
+ * @param {string} text - The text to convert to speech.
+ * @returns {Promise<Object>} A promise that resolves to the audio data.
+ */
+export async function generateTTS(text) {
+    const user = auth.currentUser;
+    const isManualUser = localStorage.getItem("isManualUser") === "true";
+    
+    if (!user && !isManualUser) {
+        throw new Error("Authentication error: No user is signed in.");
+    }
+
+    try {
+        let headers = {
+            'Content-Type': 'application/json'
+        };
+        
+        if (isManualUser) {
+            // For manual users, use custom header
+            const manualUserId = localStorage.getItem("customUserID");
+            headers['X-User-ID'] = manualUserId;
+        } else {
+            // For Firebase users, use token
+            const token = await user.getIdToken();
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        const response = await fetch('http://localhost:5000/tts', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ text })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to generate audio');
+        }
+        return data;
+    } catch (error) {
+        console.error('Error generating TTS:', error);
         throw error;
     }
 }

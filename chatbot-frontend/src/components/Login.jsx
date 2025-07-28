@@ -62,8 +62,21 @@ export default function Login() {
       const data = await res.json();
 
       if (res.ok && data.user_id) {
-        await signInAnonymously(auth);
+        // Store the manual user ID and create a custom user object
         localStorage.setItem("customUserID", data.user_id);
+        localStorage.setItem("isManualUser", "true");
+        
+        // Create a custom user object for manual users
+        const manualUser = {
+          uid: data.user_id,
+          email: null,
+          displayName: `User ${data.user_id}`,
+          isAnonymous: false,
+          isManualUser: true
+        };
+        
+        // Trigger a custom event to notify the app about manual login
+        window.dispatchEvent(new CustomEvent('manualUserLogin', { detail: manualUser }));
       } else {
         throw new Error(data.error || "Invalid user ID or failed to create user.");
       }

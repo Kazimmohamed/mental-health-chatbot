@@ -15,3 +15,77 @@
 * {
   @apply transition-colors duration-200;
 }
+
+/* Custom animations */
+@keyframes gentlePulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.05);
+  }
+}
+
+.animate-gentlePulse {
+  animation: gentlePulse 1.5s ease-in-out infinite;
+}
+
+/* Scrollbar styling */
+.scrollbar-soft::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-soft::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-soft::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.3);
+  border-radius: 3px;
+}
+
+.scrollbar-soft::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.5);
+}
+
+/* Natural speaker button styling */
+@keyframes speakerPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.speaker-button {
+  opacity: 0.6;
+  transition: all 0.2s ease-in-out;
+}
+
+.speaker-button:hover {
+  opacity: 1;
+  animation: speakerPulse 0.4s ease-in-out;
+  transform: scale(1.05);
+}
+
+.speaker-button:active {
+  transform: scale(0.95);
+}
+
+/* Make the button container more natural */
+.speaker-button-container {
+  position: relative;
+  display: inline-block;
+}
+
+/* Subtle shadow for depth */
+.speaker-button {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.speaker-button:hover {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}

@@ -1,3 +1,5 @@
+// src/components/ChatWindow.jsx
+
 import React, { useState, useEffect, useRef } from 'react';
 import {
   collection,
@@ -12,13 +14,27 @@ import {
   getDoc
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { HiHeart, HiSparkles } from 'react-icons/hi';
+import { HiHeart, HiSparkles, HiVolumeUp } from 'react-icons/hi';
 import InputBar from './InputBar';
 import { Card, CardContent } from '../ui/Card';
-import { sendMessageToBackend } from '../lib/api'; 
+import { sendMessageToBackend, generateTTS } from '../lib/api'; 
 
-const MessageBubble = ({ message }) => {
+const MessageBubble = ({ message, onPlayAudio }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
   const isUser = message.sender === 'user';
+
+  const handlePlayAudio = async () => {
+    if (onPlayAudio && !isPlaying) {
+      setIsPlaying(true);
+      try {
+        await onPlayAudio();
+      } finally {
+        setIsPlaying(false);
+      }
+    } else if (!onPlayAudio) {
+      console.log('No audio available for this message');
+    }
+  };
 
   return (
     <div className={`flex mb-4 ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -51,6 +67,27 @@ const MessageBubble = ({ message }) => {
             </p>
           )}
         </div>
+        {/* ✨ Natural speaker button - integrated with chat */}
+        {!isUser && !message.isTyping && onPlayAudio && (
+          <div className="mt-1 ml-1 speaker-button-container">
+            <button 
+              onClick={handlePlayAudio}
+              disabled={isPlaying}
+              className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300 transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed speaker-button"
+              title={isPlaying ? "Playing audio..." : "Play audio"}
+            >
+              {isPlaying ? (
+                <div className="flex space-x-0.5">
+                  <div className="w-0.5 h-1 bg-gray-400 rounded-full animate-pulse"></div>
+                  <div className="w-0.5 h-1 bg-gray-400 rounded-full animate-pulse delay-75"></div>
+                  <div className="w-0.5 h-1 bg-gray-400 rounded-full animate-pulse delay-150"></div>
+                </div>
+              ) : (
+                <HiVolumeUp className="h-2 w-2 text-gray-500 hover:text-gray-700 transition-colors" />
+              )}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -73,8 +110,11 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
     }
     setLoading(true);
 
+    // Get the correct user ID for Firestore operations
+    const userId = user.uid;
+
     const q = query(
-      collection(db, 'conversations', user.uid, 'sessions', sessionId, 'messages'),
+      collection(db, 'conversations', userId, 'sessions', sessionId, 'messages'),
       orderBy('created_at', 'asc')
     );
 
@@ -90,6 +130,22 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
     return () => unsub();
   }, [sessionId, user]);
 
+  const playAudio = async (text) => {
+    try {
+      // Generate TTS on-demand
+      const { audio_base64 } = await generateTTS(text);
+      const audio = new Audio("data:audio/mp3;base64," + audio_base64);
+      return new Promise((resolve, reject) => {
+        audio.onended = () => resolve();
+        audio.onerror = () => reject();
+        audio.play().catch(reject);
+      });
+    } catch (error) {
+      console.error('Failed to generate or play audio:', error);
+      return Promise.reject(error);
+    }
+  };
+
   const sendMessage = async (text) => {
     const inputText = text.trim();
     if (!inputText || !user) return;
@@ -100,14 +156,26 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
       let currentSessionId = sessionId;
 
       if (!currentSessionId) {
-        const token = await auth.currentUser.getIdToken();
+        // Use the API function that handles both Firebase and manual users
+        const isManualUser = localStorage.getItem("isManualUser") === "true";
+        
+        let headers = {
+          'Content-Type': 'application/json'
+        };
+        
+        if (isManualUser) {
+          // For manual users, use custom header
+          const manualUserId = localStorage.getItem("customUserID");
+          headers['X-User-ID'] = manualUserId;
+        } else {
+          // For Firebase users, use token
+          const token = await auth.currentUser.getIdToken();
+          headers['Authorization'] = `Bearer ${token}`;
+        }
 
         const res = await fetch('http://localhost:5000/sessions/new', {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
+          headers,
           body: JSON.stringify({})
         });
 
@@ -121,33 +189,21 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
         setSessionId(currentSessionId);
       }
 
-      const userMessage = {
-        input_text: inputText,
-        gpt_response: '',
-        sender: 'user',
-        created_at: serverTimestamp()
-      };
-      await addDoc(collection(db, 'conversations', user.uid, 'sessions', currentSessionId, 'messages'), userMessage);
-
       const { reply, title } = await sendMessageToBackend(currentSessionId, inputText);
 
-      const botMessage = {
-        input_text: '',
-        gpt_response: reply,
-        sender: 'bot',
-        created_at: serverTimestamp()
-      };
-      await addDoc(collection(db, 'conversations', user.uid, 'sessions', currentSessionId, 'messages'), botMessage);
-
+      // Get the correct user ID for Firestore operations
+      const userId = user.uid;
+      
       if (title) {
-        await updateDoc(doc(db, 'conversations', user.uid, 'sessions', currentSessionId), { title });
+        await updateDoc(doc(db, 'conversations', userId, 'sessions', currentSessionId), { title });
       }
-      await updateDoc(doc(db, 'conversations', user.uid, 'sessions', currentSessionId), { last_updated: serverTimestamp() });
+      await updateDoc(doc(db, 'conversations', userId, 'sessions', currentSessionId), { last_updated: serverTimestamp() });
 
     } catch (err) {
       console.error('Error sending message:', err);
       if (sessionId) {
-        await addDoc(collection(db, 'conversations', user.uid, 'sessions', sessionId, 'messages'), {
+        const userId = user.uid;
+        await addDoc(collection(db, 'conversations', userId, 'sessions', sessionId, 'messages'), {
           input_text: '',
           gpt_response: "Sorry, I'm having trouble responding right now.",
           sender: 'bot',
@@ -211,16 +267,38 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
           <Welcome />
         ) : (
           <div className="space-y-1">
-            {messages.map((m) => (
-              <MessageBubble
-                key={m.id}
-                message={{
-                  text: m.input_text || m.gpt_response,
-                  sender: m.sender,
-                  isError: m.isError
-                }}
-              />
-            ))}
+            {messages.map((m) => {
+              // Handle the backend's message format where each document contains both input_text and gpt_response
+              const messagesToRender = [];
+              
+              // Add user message if input_text exists
+              if (m.input_text) {
+                messagesToRender.push({
+                  id: `${m.id}-user`,
+                  text: m.input_text,
+                  sender: 'user',
+                  isError: false
+                });
+              }
+              
+              // Add bot message if gpt_response exists
+              if (m.gpt_response) {
+                messagesToRender.push({
+                  id: `${m.id}-bot`,
+                  text: m.gpt_response,
+                  sender: 'bot',
+                  isError: m.isError || false
+                });
+              }
+              
+              return messagesToRender.map((msg) => (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  onPlayAudio={msg.sender === 'bot' ? () => playAudio(msg.text) : null}
+                />
+              ));
+            }).flat()}
           </div>
         )}
         {sending && (

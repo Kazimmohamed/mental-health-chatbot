@@ -38,6 +38,15 @@ function App() {
             setLoading(false);
         });
 
+        // Handle manual user login
+        const handleManualLogin = (event) => {
+            const manualUser = event.detail;
+            setUser(manualUser);
+            setLoading(false);
+        };
+
+        window.addEventListener('manualUserLogin', handleManualLogin);
+
         // This effect handles responsive sidebar visibility
         const handleResize = () => {
             if (window.innerWidth < 1024) {
@@ -51,6 +60,7 @@ function App() {
 
         return () => {
             unsub();
+            window.removeEventListener('manualUserLogin', handleManualLogin);
             window.removeEventListener('resize', handleResize);
         };
     }, []);
