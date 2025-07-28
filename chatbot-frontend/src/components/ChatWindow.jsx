@@ -11,17 +11,15 @@ import {
   setDoc,
   getDoc
 } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase'; // ✅ Import auth
+import { db, auth } from '../lib/firebase';
 import { HiHeart, HiSparkles } from 'react-icons/hi';
 import InputBar from './InputBar';
-
 import { Card, CardContent } from '../ui/Card';
-// We assume this function is also updated to send the auth token
 import { sendMessageToBackend } from '../lib/api'; 
 
 const MessageBubble = ({ message }) => {
   const isUser = message.sender === 'user';
-  
+
   return (
     <div className={`flex mb-4 ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div className={`max-w-[85%] flex items-end ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -30,7 +28,7 @@ const MessageBubble = ({ message }) => {
             M
           </div>
         )}
-        
+
         <div
           className={`
             px-4 py-3 rounded-2xl
@@ -69,7 +67,7 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
   }, [messages, sending]);
 
   useEffect(() => {
-    if (!sessionId || !user) { // Ensure user exists
+    if (!sessionId || !user) {
       setMessages([]);
       return;
     }
@@ -85,16 +83,16 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
       setMessages(msgs);
       setLoading(false);
     }, (error) => {
-        console.error("Error fetching messages:", error);
-        setLoading(false);
+      console.error("Error fetching messages:", error);
+      setLoading(false);
     });
 
     return () => unsub();
-  }, [sessionId, user]); // Depend on user object
+  }, [sessionId, user]);
 
   const sendMessage = async (text) => {
     const inputText = text.trim();
-    if (!inputText || !user) return; // Ensure user exists before sending
+    if (!inputText || !user) return;
 
     setSending(true);
 
@@ -102,41 +100,36 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
       let currentSessionId = sessionId;
 
       if (!currentSessionId) {
-        // ✅ Get the authentication token from the current user
         const token = await auth.currentUser.getIdToken();
 
         const res = await fetch('http://localhost:5000/sessions/new', {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
-            // ✅ Add the Authorization header to the request
             'Authorization': `Bearer ${token}`
           },
-          // The body is now empty because the backend gets the user ID from the token
-          body: JSON.stringify({}) 
+          body: JSON.stringify({})
         });
 
         if (!res.ok) {
-            const errorData = await res.json();
-            throw new Error(errorData.error || 'Failed to create session');
+          const errorData = await res.json();
+          throw new Error(errorData.error || 'Failed to create session');
         }
 
         const data = await res.json();
         currentSessionId = data.session_id;
         setSessionId(currentSessionId);
       }
-      
+
       const userMessage = {
         input_text: inputText,
         gpt_response: '',
         sender: 'user',
         created_at: serverTimestamp()
       };
-      // Use currentSessionId which is guaranteed to be defined here
       await addDoc(collection(db, 'conversations', user.uid, 'sessions', currentSessionId, 'messages'), userMessage);
-      
-      // IMPORTANT: You must also update `sendMessageToBackend` to send the token.
-      const { reply, title } = await sendMessageToBackend(user.uid, currentSessionId, inputText);
+
+      const { reply, title } = await sendMessageToBackend(currentSessionId, inputText);
 
       const botMessage = {
         input_text: '',
@@ -153,15 +146,14 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
 
     } catch (err) {
       console.error('Error sending message:', err);
-      // Ensure we use a valid session ID for the error message
       if (sessionId) {
-          await addDoc(collection(db, 'conversations', user.uid, 'sessions', sessionId, 'messages'), {
-            input_text: '',
-            gpt_response: "Sorry, I'm having trouble responding right now.",
-            sender: 'bot',
-            created_at: serverTimestamp(),
-            isError: true
-          });
+        await addDoc(collection(db, 'conversations', user.uid, 'sessions', sessionId, 'messages'), {
+          input_text: '',
+          gpt_response: "Sorry, I'm having trouble responding right now.",
+          sender: 'bot',
+          created_at: serverTimestamp(),
+          isError: true
+        });
       }
     } finally {
       setSending(false);
@@ -180,7 +172,7 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
         <p className="text-gray-600 text-center mb-8">
           I'm here to listen and support you on your mental wellness journey.
         </p>
-        
+
         <Card className="border-0 shadow-sm bg-gray-50/50">
           <CardContent className="p-4">
             <div className="flex items-center justify-center mb-3">
@@ -188,11 +180,7 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
               <span className="font-medium text-gray-700">Quick prompts to get started</span>
             </div>
             <div className="space-y-3">
-              {[
-                "I'm feeling anxious about something",
-                "I need someone to talk to",
-                "I'm having a tough day"
-              ].map((preset) => (
+              {["I'm feeling anxious about something","I need someone to talk to","I'm having a tough day"].map((preset) => (
                 <button
                   key={preset}
                   onClick={() => sendMessage(preset)}
@@ -236,21 +224,19 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
           </div>
         )}
         {sending && (
-          <MessageBubble
-            message={{ text: "", sender: "bot", isTyping: true }}
-          />
+          <MessageBubble message={{ text: "", sender: "bot", isTyping: true }} />
         )}
         <div ref={bottomRef} />
       </div>
 
       <div className="border-t border-gray-200 bg-white px-4 py-3">
         <div className="max-w-4xl mx-auto">
-             <InputBar
-                onSendMessage={sendMessage}
-                disabled={sending}
-                placeholder="Share what's on your mind…"
-                autoSendOnVoice={true}
-             />
+          <InputBar
+            onSendMessage={sendMessage}
+            disabled={sending}
+            placeholder="Share what's on your mind…"
+            autoSendOnVoice={true}
+          />
         </div>
       </div>
     </div>
