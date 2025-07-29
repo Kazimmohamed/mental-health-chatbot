@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-// ✅ FIX: Import Firestore methods for real-time updates
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, db } from './lib/firebase'; // Import db
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore'; // Import Firestore functions
+import { auth, db } from './lib/firebase';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 
 import Login from './components/Login';
 import Logout from './components/Logout';
@@ -19,7 +18,6 @@ function App() {
     const [currentSessionId, setCurrentSessionId] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1024);
 
-    // ✅ FIX: Replace the one-time fetch with a real-time listener
     useEffect(() => {
         if (!user) {
             setSessions([]);
@@ -30,18 +28,15 @@ function App() {
         setLoading(true);
         const userId = user.uid;
 
-        // Create a query to get sessions, ordered by the last update time
         const sessionsQuery = query(
             collection(db, 'conversations', userId, 'sessions'),
             orderBy('last_updated', 'desc')
         );
 
-        // onSnapshot listens for real-time updates
         const unsubscribe = onSnapshot(sessionsQuery, (snapshot) => {
             const userSessions = snapshot.docs.map(doc => ({
                 session_id: doc.id,
                 ...doc.data(),
-                // Ensure timestamps are correctly handled
                 created_at: doc.data().created_at?.toDate ? doc.data().created_at.toDate().toISOString() : null,
                 last_updated: doc.data().last_updated?.toDate ? doc.data().last_updated.toDate().toISOString() : null,
             }));
@@ -53,21 +48,20 @@ function App() {
             setLoading(false);
         });
 
-        // Cleanup the listener when the component unmounts or the user changes
         return () => unsubscribe();
-    }, [user]); // This effect now depends on the user object
+    }, [user]);
 
     useEffect(() => {
-        // This effect now only handles auth state and manual login
         const manualUserId = localStorage.getItem("customUserID");
         if (manualUserId && localStorage.getItem("isManualUser") === "true") {
             const manualUser = {
                 uid: manualUserId,
-                displayName: `User ${manualUserId.substring(0, 5)}...`,
+                // ✅ FIX: This now correctly uses the full ID for display name.
+                // The primary fix is in Login.jsx, but this ensures consistency on reload.
+                displayName: `User ${manualUserId}`,
                 isManualUser: true,
             };
             setUser(manualUser);
-            // No need to fetch sessions here anymore, the other useEffect will handle it
         }
 
         const unsub = onAuthStateChanged(auth, (u) => {
@@ -94,7 +88,7 @@ function App() {
             window.removeEventListener('manualUserLogin', handleManualLogin);
             window.removeEventListener('resize', handleResize);
         };
-    }, []); // This effect runs once on mount
+    }, []);
 
     const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
@@ -112,7 +106,7 @@ function App() {
         }
     };
 
-    if (loading && !sessions.length) { // Adjusted loading condition
+    if (loading && !sessions.length) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50">
                 <div className="flex flex-col items-center space-y-4">
@@ -147,6 +141,7 @@ function App() {
                                         onSelectChat={selectChat}
                                         sessions={sessions}
                                         user={user}
+                                        currentSessionId={currentSessionId}
                                     />
                                     <main className={`flex-1 flex flex-col transition-all duration-300 ease-in-out ${sidebarOpen ? 'lg:ml-80' : 'lg:ml-0'}`}>
                                         <div className="bg-white/80 backdrop-blur-md border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between shadow-sm flex-shrink-0">
@@ -164,13 +159,13 @@ function App() {
                                                     </Button>
                                                 </div>
                                                 <div className="flex items-center space-x-2">
-                                                    <div className="bg-gradient-to-r from-indigo-400 to-purple-500 w-10 h-10 rounded-full flex items-center justify-center text-white font-bold">
+                                                    <div className="bg-gradient-to-r from-indigo-400 to-purple-500 w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
                                                         {user.displayName ? user.displayName.charAt(0).toUpperCase() : 'U'}
                                                     </div>
                                                     <div className="hidden md:block">
-                                                        {/* ✅ UI CHANGE MERGED: Show full user ID for manual users */}
+                                                        {/* ✅ UI FIX: Now correctly displays the full user name or ID */}
                                                         <p className="text-sm font-medium text-gray-700">{user.displayName || `User ${user.uid}`}</p>
-                                                        {/* ✅ UI CHANGE MERGED: Removed truncating classes to show full text */}
+                                                        {/* ✅ UI FIX: Removed truncating classes */}
                                                         <p className="text-xs text-gray-500">{user.email || 'Manual User'}</p>
                                                     </div>
                                                 </div>

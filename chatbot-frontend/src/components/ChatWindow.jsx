@@ -5,7 +5,8 @@ import { sendMessageToBackend, generateTTS } from '../lib/api';
 import MessageBubble from './MessageBubble';
 import InputBar from './InputBar';
 import { Card, CardContent } from '../ui/card';
-import { HiHeart, HiSparkles } from 'react-icons/hi';
+// ✅ AESTHETIC CHANGE: Added HiChatAlt2 for the new prompt buttons
+import { HiHeart, HiSparkles, HiChatAlt2 } from 'react-icons/hi';
 
 async function createNewSession(user) {
     let headers = { 'Content-Type': 'application/json' };
@@ -69,8 +70,8 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
 
   const playAudio = useCallback(async (text) => {
     try {
-      const { audio_base64 } = await generateTTS(user, text);
-      const audio = new Audio("data:audio/mp3;base64," + audio_base64);
+      const { audio_base_64 } = await generateTTS(user, text);
+      const audio = new Audio("data:audio/mp3;base64," + audio_base_64);
       await audio.play();
     } catch (error) {
       console.error('Failed to generate or play audio:', error);
@@ -101,8 +102,7 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
         created_at: serverTimestamp(),
       });
       
-      // ✅ FIX: No longer need to receive 'title' from the backend.
-      const { reply } = await sendMessageToBackend(user, currentSessionId, inputText);
+      const { reply, title } = await sendMessageToBackend(user, currentSessionId, inputText);
 
       await addDoc(messagesCol, {
         text: reply,
@@ -110,9 +110,9 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
         created_at: serverTimestamp(),
       });
 
-      // ✅ FIX: Removed the title update logic from the frontend.
-      // We still update the timestamp to ensure the session appears at the top of the list.
       const sessionDocRef = doc(db, 'conversations', userId, 'sessions', currentSessionId);
+      // The backend now handles title updates, but we still update the timestamp
+      // to ensure the session moves to the top of the list.
       await updateDoc(sessionDocRef, { last_updated: serverTimestamp() });
       
     } catch (err) {
@@ -146,17 +146,20 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
         <Card className="border-0 shadow-sm bg-gray-50/50">
           <CardContent className="p-4">
             <div className="flex items-center justify-center mb-3">
+              {/* ✅ AESTHETIC CHANGE: Replaced emoji with professional icon */}
               <HiSparkles className="h-5 w-5 text-yellow-500 mr-2" />
               <span className="font-medium text-gray-700">Quick prompts to get started</span>
             </div>
             <div className="space-y-3">
               {["I'm feeling anxious about something","I need someone to talk to","I'm having a tough day"].map((preset) => (
+                // ✅ AESTHETIC CHANGE: Restyled prompts to look like distinct buttons
                 <button
                   key={preset}
                   onClick={() => sendMessage(preset)}
-                  className="w-full text-left px-4 py-3 bg-white border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-200 transition-all duration-200"
+                  className="w-full text-left px-4 py-3 bg-white border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-300 transition-all duration-200 flex items-center group"
                 >
-                  {preset}
+                  <HiChatAlt2 className="h-5 w-5 mr-3 text-indigo-400 group-hover:text-indigo-600 transition-colors" />
+                  <span className="text-gray-700 group-hover:text-indigo-800 transition-colors">{preset}</span>
                 </button>
               ))}
             </div>
