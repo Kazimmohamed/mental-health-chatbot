@@ -10,11 +10,10 @@ from firebase_admin import auth
 from gtts import gTTS
 import base64
 from io import BytesIO
+from dotenv import load_dotenv
+load_dotenv()
 
-# Assume ai_core.py exists and contains these functions
 from ai_core import analyze_and_respond, record_audio_from_file
-
-# Import the corrected and streamlined functions from your firebase utility file
 from firebase_utils import (
     ensure_user_exists,
     get_all_sessions,
@@ -29,15 +28,11 @@ CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}}, expose
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# === ✅ OPTIMIZED: Unified Authentication Function ===
+# === Authentication ===
 def get_authenticated_user_id():
-    """
-    Unified authentication function that handles both Firebase and manual users.
-    Returns the user_id if authentication is successful, None otherwise.
-    """
     auth_header = request.headers.get('Authorization')
     manual_user_id = request.headers.get('X-User-ID')
-    
+
     if auth_header and auth_header.startswith('Bearer '):
         try:
             id_token = auth_header.split('Bearer ')[1]
@@ -62,27 +57,22 @@ def get_authenticated_user_id():
     else:
         return None
 
-# === ✅ OPTIMIZED: Authentication Decorator ===
 def require_auth(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         user_id = get_authenticated_user_id()
         if not user_id:
             return jsonify({"error": "Authentication required"}), 401
-        
         request.user_id = user_id
         return f(*args, **kwargs)
     return decorated_function
 
-# --- Public Route (No token required) ---
-
+# --- Public Route ---
 @app.route("/user", methods=["POST"])
 def handle_user():
-    """Handles manual user creation and validation."""
     try:
         data = request.json
         is_new = data.get('is_new', False)
-        
         if is_new:
             user_id = f"user_{str(uuid.uuid4())[:8]}"
             ensure_user_exists(user_id)
@@ -91,7 +81,6 @@ def handle_user():
             user_id = data.get('user_id', '').strip()
             if not user_id:
                 return jsonify({"error": "User ID is required"}), 400
-            
             user_ref = db.collection("conversations").document(user_id)
             if user_ref.get().exists:
                 return jsonify({"user_id": user_id, "message": "User validated successfully"}), 200
@@ -101,12 +90,10 @@ def handle_user():
         print(f"🔥 Error in /user endpoint: {e}")
         return jsonify({"error": "An internal error occurred"}), 500
 
-# --- Secure Routes (Authentication required) ---
-
+# --- Authenticated Routes ---
 @app.route("/sessions/new", methods=["POST"])
 @require_auth
 def new_session():
-    """Creates a new, empty session for the authenticated user."""
     try:
         user_id = request.user_id
         session_id = create_new_session(user_id)
@@ -118,13 +105,11 @@ def new_session():
 @app.route('/text', methods=['POST'])
 @require_auth
 def handle_text():
-    """Handles a text-based message from the user."""
     try:
         data = request.json
         user_id = request.user_id
         session_id = data['session_id']
         transcript = str(data['input_text'])
-        
         result = analyze_and_respond(user_id, session_id, transcript, audio_path=None)
         return jsonify(result)
     except KeyError as e:
@@ -136,19 +121,15 @@ def handle_text():
 @app.route('/voice', methods=['POST'])
 @require_auth
 def handle_voice():
-    """Handles a voice-based message from the user."""
     try:
         user_id = request.user_id
         session_id = request.form['session_id']
-        
         if 'audio' not in request.files:
             return jsonify({"error": "No audio file in request"}), 400
-            
         file = request.files['audio']
         unique_filename = f"audio_{uuid.uuid4().hex[:8]}.wav"
         filepath = os.path.join(UPLOAD_FOLDER, unique_filename)
         file.save(filepath)
-        
         _, transcript = record_audio_from_file(filepath)
         result = analyze_and_respond(user_id, session_id, transcript, audio_path=filepath)
         return jsonify(result)
@@ -161,12 +142,8 @@ def handle_voice():
 @app.route('/history/<string:requested_user_id>', methods=['GET'])
 @require_auth
 def get_sessions(requested_user_id):
-    """Gets the list of all sessions for a user."""
-    token_user_id = request.user_id
-    
-    if token_user_id != requested_user_id:
+    if request.user_id != requested_user_id:
         return jsonify({"error": "Unauthorized access to user history"}), 403
-    
     try:
         sessions = get_all_sessions(requested_user_id)
         return jsonify({"sessions": sessions})
@@ -177,19 +154,16 @@ def get_sessions(requested_user_id):
 @app.route('/tts', methods=['POST'])
 @require_auth
 def generate_tts_route():
-    """Generates TTS audio on-demand from provided text."""
     try:
         data = request.json
         text = data.get('text', '')
         if not text:
             return jsonify({"error": "No text provided"}), 400
-        
         tts = gTTS(text=text, lang='en')
         mp3_fp = BytesIO()
         tts.write_to_fp(mp3_fp)
         mp3_fp.seek(0)
         audio_base64 = base64.b64encode(mp3_fp.read()).decode('utf-8')
-        
         return jsonify({"audio_base64": audio_base64})
     except Exception as e:
         print(f"❌ Error in /tts endpoint: {e}")
@@ -198,12 +172,8 @@ def generate_tts_route():
 @app.route('/history/<string:requested_user_id>/<string:session_id>', methods=['GET'])
 @require_auth
 def get_session_chat(requested_user_id, session_id):
-    """Gets the chat history for a specific session."""
-    token_user_id = request.user_id
-    
-    if token_user_id != requested_user_id:
+    if request.user_id != requested_user_id:
         return jsonify({"error": "Unauthorized access to session history"}), 403
-    
     try:
         messages = get_session_messages(requested_user_id, session_id)
         return jsonify({"messages": messages})
