@@ -1,8 +1,23 @@
+# Web Framework
 Flask
-flask-cors
-SpeechRecognition
+Flask-Cors
+
+# Firebase Integration
+firebase-admin
+
+# OpenAI API
+openai
+
+# Google Gemini API
+google-generativeai
+
+# HuggingFace Transformers for Local AI/ML
 transformers
 torch
-openai
-firebase-admin
+
+# Voice and Audio Processing
+SpeechRecognition
 gTTS
+
+# Utilities
+python-dotenv

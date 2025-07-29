@@ -36,16 +36,16 @@ const MessageBubble = memo(({ message, onPlayAudio }) => {
   };
 
   return (
-    <div className={`flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex items-start gap-2 group ${isUser ? 'justify-end' : 'justify-start'}`}>
       {/* Bot Avatar */}
       {!isUser && (
-        <div className="w-8 h-8 rounded-full bg-gradient-to-r from-indigo-400 to-purple-500 flex-shrink-0 flex items-center justify-center text-white font-bold">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-r from-indigo-400 to-purple-500 flex-shrink-0 flex items-center justify-center text-white font-bold mt-1">
           M
         </div>
       )}
 
-      {/* Message Content */}
-      <div className={`max-w-[85%] group relative ${isUser ? 'order-1' : ''}`}>
+      {/* Message Content and Actions Wrapper */}
+      <div className={`flex flex-col max-w-[85%] ${isUser ? 'items-end' : 'items-start'}`}>
         <div 
           className={`
             px-4 py-3 rounded-2xl shadow-sm
@@ -73,28 +73,23 @@ const MessageBubble = memo(({ message, onPlayAudio }) => {
 
         {/* Timestamp */}
         {!message.isTyping && (
-          <div className={`text-xs mt-1 ${isUser ? 'text-indigo-400 text-right' : 'text-gray-500 text-left'}`}>
+          <div className={`text-xs mt-1 px-1 ${isUser ? 'text-indigo-400' : 'text-gray-500'}`}>
             {formatTimestamp(message.created_at)}
           </div>
         )}
 
-        {/* Action Buttons */}
-        <div className="absolute top-0 -right-8 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {!isUser && !message.isTyping && (
-            <button onClick={copyToClipboard} className="p-1.5 rounded-full bg-white hover:bg-gray-100" title="Copy">
+        {/* ✅ UI CHANGE: Action Buttons moved below the message bubble */}
+        {!isUser && !message.isTyping && (
+          <div className="flex items-center gap-2 mt-2 pl-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <button onClick={copyToClipboard} className="p-1.5 rounded-full bg-gray-100 hover:bg-gray-200" title="Copy">
               {copied ? <HiCheck className="h-4 w-4 text-green-500" /> : <HiClipboardCopy className="h-4 w-4 text-gray-500" />}
             </button>
-          )}
-          {!isUser && !message.isTyping && onPlayAudio && (
-            <button onClick={handlePlayAudio} disabled={isPlaying} className="p-1.5 rounded-full bg-white hover:bg-gray-100" title="Play audio">
-              <HiVolumeUp className={`h-4 w-4 ${isPlaying ? 'text-indigo-500 animate-pulse' : 'text-gray-500'}`} />
-            </button>
-          )}
-        </div>
-        {isUser && !message.isTyping && !message.isError && (
-          <button className="absolute top-0 -left-8 opacity-0 group-hover:opacity-100 p-1.5 rounded-full bg-white hover:bg-gray-100" title="React">
-            <HiHeart className="h-4 w-4 text-gray-400 hover:text-red-500" />
-          </button>
+            {onPlayAudio && (
+              <button onClick={handlePlayAudio} disabled={isPlaying} className="p-1.5 rounded-full bg-gray-100 hover:bg-gray-200" title="Play audio">
+                <HiVolumeUp className={`h-4 w-4 ${isPlaying ? 'text-indigo-500 animate-pulse' : 'text-gray-500'}`} />
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>

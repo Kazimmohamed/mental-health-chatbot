@@ -1,5 +1,5 @@
-# FILE: firebaseutil.py (Corrected & Upgraded)
-# This file now includes a new function to update a session's title.
+# FILE: firebase_utils.py (Corrected & Upgraded)
+# This file now includes a new function to get a single session's details.
 # =================================================================================
 
 import firebase_admin
@@ -93,10 +93,23 @@ def get_session_messages(user_id, session_id):
         print(f"🔥 ERROR in get_session_messages: {e}")
         return []
 
+def get_session_details(user_id, session_id):
+    """Retrieves the data for a single session document."""
+    try:
+        session_ref = db.collection("conversations").document(user_id).collection("sessions").document(session_id)
+        doc = session_ref.get()
+        if doc.exists:
+            return doc.to_dict()
+        else:
+            print(f"⚠️ WARNING: Session document {session_id} not found for user {user_id}.")
+            return None
+    except Exception as e:
+        print(f"🔥 ERROR in get_session_details: {e}")
+        return None
+
 def update_session_title(user_id, session_id, title):
     """
     Updates the 'title' field of a specific session document.
-    This is necessary for the automatic session naming feature.
     """
     try:
         session_ref = db.collection("conversations").document(user_id).collection("sessions").document(session_id)
@@ -105,13 +118,13 @@ def update_session_title(user_id, session_id, title):
     except Exception as e:
         print(f"🔥 ERROR in update_session_title: {e}")
 
-# ✅ ADDED: __all__ list for clean imports
 __all__ = [
     'ensure_user_exists',
     'create_new_session',
     'save_message_to_session',
     'get_all_sessions',
     'get_session_messages',
+    'get_session_details',
     'update_session_title',
     'db'
 ]

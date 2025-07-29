@@ -7,6 +7,30 @@ import InputBar from './InputBar';
 import { Card, CardContent } from '../ui/card';
 import { HiHeart, HiSparkles } from 'react-icons/hi';
 
+async function createNewSession(user) {
+    let headers = { 'Content-Type': 'application/json' };
+    
+    if (user.isManualUser) {
+        headers['X-User-ID'] = user.uid;
+    } else {
+        const token = await user.getIdToken();
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch('http://localhost:5000/sessions/new', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({})
+    });
+
+    if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to create session');
+    }
+
+    return res.json();
+}
+
 const ChatWindow = ({ user, sessionId, setSessionId }) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -45,7 +69,6 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
 
   const playAudio = useCallback(async (text) => {
     try {
-      // ✅ FIX: Pass the user object to the API function
       const { audio_base64 } = await generateTTS(user, text);
       const audio = new Audio("data:audio/mp3;base64," + audio_base64);
       await audio.play();
@@ -64,7 +87,6 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
 
     try {
       if (!currentSessionId) {
-        // This function now needs the user object
         const { session_id } = await createNewSession(user);
         currentSessionId = session_id;
         setSessionId(currentSessionId);
@@ -79,8 +101,8 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
         created_at: serverTimestamp(),
       });
       
-      // ✅ FIX: Pass the user object to the API function
-      const { reply, title } = await sendMessageToBackend(user, currentSessionId, inputText);
+      // ✅ FIX: No longer need to receive 'title' from the backend.
+      const { reply } = await sendMessageToBackend(user, currentSessionId, inputText);
 
       await addDoc(messagesCol, {
         text: reply,
@@ -88,12 +110,10 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
         created_at: serverTimestamp(),
       });
 
+      // ✅ FIX: Removed the title update logic from the frontend.
+      // We still update the timestamp to ensure the session appears at the top of the list.
       const sessionDocRef = doc(db, 'conversations', userId, 'sessions', currentSessionId);
-      if (title) {
-        await updateDoc(sessionDocRef, { title, last_updated: serverTimestamp() });
-      } else {
-        await updateDoc(sessionDocRef, { last_updated: serverTimestamp() });
-      }
+      await updateDoc(sessionDocRef, { last_updated: serverTimestamp() });
       
     } catch (err) {
       console.error('Error sending message:', err);
@@ -186,29 +206,5 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
     </div>
   );
 };
-
-async function createNewSession(user) {
-    let headers = { 'Content-Type': 'application/json' };
-    
-    if (user.isManualUser) {
-        headers['X-User-ID'] = user.uid;
-    } else {
-        const token = await user.getIdToken();
-        headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const res = await fetch('http://localhost:5000/sessions/new', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({})
-    });
-
-    if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Failed to create session');
-    }
-
-    return res.json();
-}
 
 export default ChatWindow;

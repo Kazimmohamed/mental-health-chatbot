@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+// ✅ FIX: Import Firestore methods for real-time updates
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from './lib/firebase';
-import { getSessionHistory } from './lib/api';
+import { auth, db } from './lib/firebase'; // Import db
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore'; // Import Firestore functions
 
 import Login from './components/Login';
 import Logout from './components/Logout';
@@ -18,19 +19,46 @@ function App() {
     const [currentSessionId, setCurrentSessionId] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1024);
 
+    // ✅ FIX: Replace the one-time fetch with a real-time listener
     useEffect(() => {
-        const fetchSessions = async (currentUser) => {
-            if (!currentUser) return;
-            try {
-                const userSessions = await getSessionHistory(currentUser);
-                setSessions(userSessions);
-            } catch (error) {
-                console.error("Failed to load sessions:", error);
-                setSessions([]);
-            }
-        };
+        if (!user) {
+            setSessions([]);
+            setLoading(false);
+            return;
+        }
 
-        // ✅ FIX: Check for a persisted manual user session on initial load
+        setLoading(true);
+        const userId = user.uid;
+
+        // Create a query to get sessions, ordered by the last update time
+        const sessionsQuery = query(
+            collection(db, 'conversations', userId, 'sessions'),
+            orderBy('last_updated', 'desc')
+        );
+
+        // onSnapshot listens for real-time updates
+        const unsubscribe = onSnapshot(sessionsQuery, (snapshot) => {
+            const userSessions = snapshot.docs.map(doc => ({
+                session_id: doc.id,
+                ...doc.data(),
+                // Ensure timestamps are correctly handled
+                created_at: doc.data().created_at?.toDate ? doc.data().created_at.toDate().toISOString() : null,
+                last_updated: doc.data().last_updated?.toDate ? doc.data().last_updated.toDate().toISOString() : null,
+            }));
+            setSessions(userSessions);
+            setLoading(false);
+        }, (error) => {
+            console.error("Failed to load sessions in real-time:", error);
+            setSessions([]);
+            setLoading(false);
+        });
+
+        // Cleanup the listener when the component unmounts or the user changes
+        return () => unsubscribe();
+    }, [user]); // This effect now depends on the user object
+
+    useEffect(() => {
+        // This effect now only handles auth state and manual login
         const manualUserId = localStorage.getItem("customUserID");
         if (manualUserId && localStorage.getItem("isManualUser") === "true") {
             const manualUser = {
@@ -39,18 +67,12 @@ function App() {
                 isManualUser: true,
             };
             setUser(manualUser);
-            fetchSessions(manualUser);
-            setLoading(false);
+            // No need to fetch sessions here anymore, the other useEffect will handle it
         }
 
-        // This listener will handle Firebase auth state and will not interfere with the manual user check
         const unsub = onAuthStateChanged(auth, (u) => {
-            // Only act if a manual user hasn't already been set
             if (!localStorage.getItem("isManualUser")) {
                 setUser(u);
-                if (u) {
-                    fetchSessions(u);
-                }
                 setLoading(false);
             }
         });
@@ -58,8 +80,6 @@ function App() {
         const handleManualLogin = (event) => {
             const manualUser = event.detail;
             setUser(manualUser);
-            fetchSessions(manualUser);
-            setLoading(false);
         };
 
         window.addEventListener('manualUserLogin', handleManualLogin);
@@ -74,7 +94,7 @@ function App() {
             window.removeEventListener('manualUserLogin', handleManualLogin);
             window.removeEventListener('resize', handleResize);
         };
-    }, []);
+    }, []); // This effect runs once on mount
 
     const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
@@ -92,7 +112,7 @@ function App() {
         }
     };
 
-    if (loading) {
+    if (loading && !sessions.length) { // Adjusted loading condition
         return (
             <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50">
                 <div className="flex flex-col items-center space-y-4">
@@ -148,8 +168,10 @@ function App() {
                                                         {user.displayName ? user.displayName.charAt(0).toUpperCase() : 'U'}
                                                     </div>
                                                     <div className="hidden md:block">
-                                                        <p className="text-sm font-medium text-gray-700">{user.displayName || `User ${user.uid.substring(0, 5)}`}</p>
-                                                        <p className="text-xs text-gray-500 truncate max-w-[120px]">{user.email || 'Manual User'}</p>
+                                                        {/* ✅ UI CHANGE MERGED: Show full user ID for manual users */}
+                                                        <p className="text-sm font-medium text-gray-700">{user.displayName || `User ${user.uid}`}</p>
+                                                        {/* ✅ UI CHANGE MERGED: Removed truncating classes to show full text */}
+                                                        <p className="text-xs text-gray-500">{user.email || 'Manual User'}</p>
                                                     </div>
                                                 </div>
                                             </div>

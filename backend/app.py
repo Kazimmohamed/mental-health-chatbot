@@ -28,7 +28,7 @@ CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}}, expose
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# === Authentication ===
+# === Authentication (remains the same) ===
 def get_authenticated_user_id():
     auth_header = request.headers.get('Authorization')
     manual_user_id = request.headers.get('X-User-ID')
@@ -66,7 +66,6 @@ def require_auth(f):
         request.user_id = user_id
         return f(*args, **kwargs)
     return decorated_function
-
 # --- Public Route ---
 @app.route("/user", methods=["POST"])
 def handle_user():

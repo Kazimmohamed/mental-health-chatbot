@@ -6,7 +6,8 @@ from transformers import pipeline
 from dotenv import load_dotenv
 from firebase_utils import (
     get_session_messages,
-    update_session_title
+    update_session_title,
+    get_session_details
 )
 from GeminiUtils import gemini_quick_task
 
@@ -35,7 +36,12 @@ def _generate_title_for_session(conversation_history):
     """Uses Gemini to generate a short, human-readable title for a conversation."""
     print("DEBUG: Generating session title using Gemini...")
     try:
-        history_summary = "\n".join([f"{msg['role']}: {msg['content']}" for msg in conversation_history])
+        # The context for the title should be the most recent exchange
+        user_message = next((msg['content'] for msg in reversed(conversation_history) if msg['role'] == 'user'), "")
+        bot_message = next((msg['content'] for msg in reversed(conversation_history) if msg['role'] == 'assistant'), "")
+
+        history_summary = f"user: {user_message}\nassistant: {bot_message}"
+
         prompt = f"""
         Create a short (max 4 words), concise, human-like title that summarizes the topic of the following conversation.
         Avoid quotes and extra formatting.
@@ -60,8 +66,6 @@ def format_gpt_reply(text):
 def analyze_and_respond(user_id, session_id, transcript, audio_path=None):
     """
     Main entry point for analyzing user input and generating a response.
-    Routes tasks like tone/emotion detection to HuggingFace models, title generation to Gemini,
-    and response generation to OpenAI GPT-4o-mini.
     """
 
     # --- Emotion/Tone Analysis ---
@@ -121,15 +125,25 @@ Rules:
         gpt_reply = f"(ChatGPT Error: {e})"
         print(f"🔥 ERROR: GPT reply failed: {e}")
 
-    # --- Generate Session Title If First Message ---
+    # --- Generate and SAVE Session Title ---
     new_title = None
-    if not past_docs:
-        print(f"DEBUG: First message in session {session_id}. Generating title...")
-        title_context = [
-            {"role": "user", "content": transcript},
-            {"role": "assistant", "content": gpt_reply}
-        ]
-        new_title = _generate_title_for_session(title_context)
+    
+    session_data = get_session_details(user_id, session_id)
+    current_title = session_data.get('title') if session_data else 'Untitled Session'
+
+    # Condition to generate title for new sessions OR existing untitled sessions.
+    if current_title == 'Untitled Session':
+        print(f"DEBUG: Session '{session_id}' is untitled. Generating a new title...")
+        
+        # The full context for title generation includes the new reply
+        full_conversation_history = messages + [{"role": "assistant", "content": gpt_reply}]
+        new_title = _generate_title_for_session(full_conversation_history)
+
+        if new_title and isinstance(new_title, str) and new_title != "Mindful Moment":
+            print(f"DEBUG: Successfully generated title: '{new_title}'. Saving to Firestore.")
+            update_session_title(user_id, session_id, new_title)
+        else:
+            print(f"⚠️ WARNING: Title generation resulted in a fallback or invalid title: '{new_title}'. Not updating Firestore.")
 
     # --- Final Output ---
     return {
