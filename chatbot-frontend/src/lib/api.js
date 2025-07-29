@@ -1,32 +1,26 @@
 import { auth } from './firebase';
 
 /**
- * Fetches the session history for the currently logged-in user from the backend.
- * @param {string} userId - The UID of the user.
+ * Fetches the session history for the given user from the backend.
+ * @param {object} user - The user object from the App's state.
  * @returns {Promise<Array>} A promise that resolves to an array of session objects.
  */
-export async function getSessionHistory(userId) {
-    const user = auth.currentUser;
-    const isManualUser = localStorage.getItem("isManualUser") === "true";
-    
-    if (!user && !isManualUser) {
-        throw new Error("Authentication error: No user is signed in.");
+export async function getSessionHistory(user) {
+    if (!user || !user.uid) {
+        throw new Error("Authentication error: User object is invalid.");
     }
 
     try {
         let headers = {};
         
-        if (isManualUser) {
-            // For manual users, use custom header
-            const manualUserId = localStorage.getItem("customUserID");
-            headers['X-User-ID'] = manualUserId;
+        if (user.isManualUser) {
+            headers['X-User-ID'] = user.uid;
         } else {
-            // For Firebase users, use token
-            const token = await user.getIdToken();
+            const token = await auth.currentUser.getIdToken();
             headers['Authorization'] = `Bearer ${token}`;
         }
         
-        const response = await fetch(`http://localhost:5000/history/${userId}`, {
+        const response = await fetch(`http://localhost:5000/history/${user.uid}`, {
             method: 'GET',
             headers
         });
@@ -37,7 +31,7 @@ export async function getSessionHistory(userId) {
         }
 
         const data = await response.json();
-        return data.sessions || []; // Ensure it returns an array
+        return data.sessions || [];
     } catch (error) {
         console.error('Error fetching session history:', error);
         throw error;
@@ -46,16 +40,14 @@ export async function getSessionHistory(userId) {
 
 /**
  * Sends a user's message to the backend for processing.
+ * @param {object} user - The user object from the App's state.
  * @param {string} sessionId - The ID of the current session.
  * @param {string} inputText - The message from the user.
  * @returns {Promise<Object>} A promise that resolves to the AI's response.
  */
-export async function sendMessageToBackend(sessionId, inputText) {
-    const user = auth.currentUser;
-    const isManualUser = localStorage.getItem("isManualUser") === "true";
-    
-    if (!user && !isManualUser) {
-        throw new Error("Authentication error: No user is signed in.");
+export async function sendMessageToBackend(user, sessionId, inputText) {
+    if (!user || !user.uid) {
+        throw new Error("Authentication error: User object is invalid.");
     }
 
     try {
@@ -63,13 +55,10 @@ export async function sendMessageToBackend(sessionId, inputText) {
             'Content-Type': 'application/json'
         };
         
-        if (isManualUser) {
-            // For manual users, use custom header
-            const manualUserId = localStorage.getItem("customUserID");
-            headers['X-User-ID'] = manualUserId;
+        if (user.isManualUser) {
+            headers['X-User-ID'] = user.uid;
         } else {
-            // For Firebase users, use token
-            const token = await user.getIdToken();
+            const token = await auth.currentUser.getIdToken();
             headers['Authorization'] = `Bearer ${token}`;
         }
         
@@ -95,15 +84,13 @@ export async function sendMessageToBackend(sessionId, inputText) {
 
 /**
  * Generates TTS audio for the given text.
+ * @param {object} user - The user object from the App's state.
  * @param {string} text - The text to convert to speech.
  * @returns {Promise<Object>} A promise that resolves to the audio data.
  */
-export async function generateTTS(text) {
-    const user = auth.currentUser;
-    const isManualUser = localStorage.getItem("isManualUser") === "true";
-    
-    if (!user && !isManualUser) {
-        throw new Error("Authentication error: No user is signed in.");
+export async function generateTTS(user, text) {
+    if (!user || !user.uid) {
+        throw new Error("Authentication error: User object is invalid.");
     }
 
     try {
@@ -111,13 +98,10 @@ export async function generateTTS(text) {
             'Content-Type': 'application/json'
         };
         
-        if (isManualUser) {
-            // For manual users, use custom header
-            const manualUserId = localStorage.getItem("customUserID");
-            headers['X-User-ID'] = manualUserId;
+        if (user.isManualUser) {
+            headers['X-User-ID'] = user.uid;
         } else {
-            // For Firebase users, use token
-            const token = await user.getIdToken();
+            const token = await auth.currentUser.getIdToken();
             headers['Authorization'] = `Bearer ${token}`;
         }
         
@@ -137,4 +121,3 @@ export async function generateTTS(text) {
         throw error;
     }
 }
-

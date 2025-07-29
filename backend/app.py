@@ -24,68 +24,57 @@ from firebase_utils import (
 )
 
 app = Flask(__name__)
-# It's important to configure CORS to allow the Authorization header from your frontend
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}}, expose_headers=["Authorization"])
 
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# === ✅ REVISED: Authentication Decorator ===
-def check_auth(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        auth_header = request.headers.get('Authorization')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            return jsonify({"error": "Authorization token is missing or invalid"}), 401
-        
-        id_token = auth_header.split('Bearer ')[1]
-        
+# === ✅ OPTIMIZED: Unified Authentication Function ===
+def get_authenticated_user_id():
+    """
+    Unified authentication function that handles both Firebase and manual users.
+    Returns the user_id if authentication is successful, None otherwise.
+    """
+    auth_header = request.headers.get('Authorization')
+    manual_user_id = request.headers.get('X-User-ID')
+    
+    if auth_header and auth_header.startswith('Bearer '):
         try:
-            # Verify the token against the Firebase Auth API
+            id_token = auth_header.split('Bearer ')[1]
             decoded_token = auth.verify_id_token(id_token)
-            uid = decoded_token['uid']
-            
-            # **THE FIX IS HERE**
-            # This crucial step ensures a user document exists in Firestore before proceeding.
-            ensure_user_exists(uid)
-            
-            # Add the verified user ID to the request context for use in the endpoint
-            request.user_id = uid
-            
+            user_id = decoded_token['uid']
+            ensure_user_exists(user_id)
+            return user_id
         except Exception as e:
-            print(f"🔥 Token verification or user check failed: {e}")
-            return jsonify({"error": "Invalid or expired token"}), 401
-            
-        return f(*args, **kwargs)
-    return decorated_function
-
-# === ✅ Manual User Authentication Decorator ===
-def check_manual_auth(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        # For manual users, we'll use a custom header or query parameter
-        user_id = request.headers.get('X-User-ID') or request.args.get('user_id')
-        
-        if not user_id:
-            return jsonify({"error": "User ID is missing"}), 401
-        
+            print(f"🔥 Firebase token verification failed: {e}")
+            return None
+    elif manual_user_id:
         try:
-            # Check if user exists in Firestore
-            user_ref = db.collection("conversations").document(user_id)
-            if not user_ref.get().exists:
-                return jsonify({"error": "User not found"}), 404
-            
-            # Add the verified user ID to the request context
-            request.user_id = user_id
-            
+            user_ref = db.collection("conversations").document(manual_user_id)
+            if user_ref.get().exists:
+                ensure_user_exists(manual_user_id)
+                return manual_user_id
+            else:
+                return None
         except Exception as e:
             print(f"🔥 Manual user verification failed: {e}")
-            return jsonify({"error": "Invalid user"}), 401
-            
+            return None
+    else:
+        return None
+
+# === ✅ OPTIMIZED: Authentication Decorator ===
+def require_auth(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user_id = get_authenticated_user_id()
+        if not user_id:
+            return jsonify({"error": "Authentication required"}), 401
+        
+        request.user_id = user_id
         return f(*args, **kwargs)
     return decorated_function
 
-# --- Public Routes (No token required) ---
+# --- Public Route (No token required) ---
 
 @app.route("/user", methods=["POST"])
 def handle_user():
@@ -95,53 +84,31 @@ def handle_user():
         is_new = data.get('is_new', False)
         
         if is_new:
-            # Create a new user with a random ID
             user_id = f"user_{str(uuid.uuid4())[:8]}"
             ensure_user_exists(user_id)
-            print(f"✅ Created new manual user: {user_id}")
             return jsonify({"user_id": user_id, "message": "New user created successfully"}), 201
         else:
-            # Validate existing user ID
             user_id = data.get('user_id', '').strip()
             if not user_id:
                 return jsonify({"error": "User ID is required"}), 400
             
-            # Check if user exists in Firestore
             user_ref = db.collection("conversations").document(user_id)
             if user_ref.get().exists:
-                print(f"✅ Validated existing manual user: {user_id}")
                 return jsonify({"user_id": user_id, "message": "User validated successfully"}), 200
             else:
                 return jsonify({"error": "User ID not found"}), 404
-                
     except Exception as e:
         print(f"🔥 Error in /user endpoint: {e}")
         return jsonify({"error": "An internal error occurred"}), 500
 
-# --- Secure Routes (Token required) ---
-# All routes below require a valid Firebase ID Token in the Authorization header.
+# --- Secure Routes (Authentication required) ---
 
 @app.route("/sessions/new", methods=["POST"])
+@require_auth
 def new_session():
     """Creates a new, empty session for the authenticated user."""
     try:
-        # Check if it's a manual user or Firebase user
-        auth_header = request.headers.get('Authorization')
-        manual_user_id = request.headers.get('X-User-ID')
-        
-        if auth_header and auth_header.startswith('Bearer '):
-            # Firebase user
-            id_token = auth_header.split('Bearer ')[1]
-            decoded_token = auth.verify_id_token(id_token)
-            user_id = decoded_token['uid']
-            ensure_user_exists(user_id)
-        elif manual_user_id:
-            # Manual user
-            user_id = manual_user_id
-            ensure_user_exists(user_id)
-        else:
-            return jsonify({"error": "Authentication required"}), 401
-        
+        user_id = request.user_id
         session_id = create_new_session(user_id)
         return jsonify({"session_id": session_id}), 201
     except Exception as e:
@@ -149,33 +116,16 @@ def new_session():
         return jsonify({"error": "Could not create new session"}), 500
 
 @app.route('/text', methods=['POST'])
+@require_auth
 def handle_text():
     """Handles a text-based message from the user."""
     try:
         data = request.json
+        user_id = request.user_id
         session_id = data['session_id']
         transcript = str(data['input_text'])
         
-        # Check if it's a manual user or Firebase user
-        auth_header = request.headers.get('Authorization')
-        manual_user_id = request.headers.get('X-User-ID')
-        
-        if auth_header and auth_header.startswith('Bearer '):
-            # Firebase user
-            id_token = auth_header.split('Bearer ')[1]
-            decoded_token = auth.verify_id_token(id_token)
-            user_id = decoded_token['uid']
-            ensure_user_exists(user_id)
-        elif manual_user_id:
-            # Manual user
-            user_id = manual_user_id
-            ensure_user_exists(user_id)
-        else:
-            return jsonify({"error": "Authentication required"}), 401
-        
-        # This function should call `save_message_to_session` internally
         result = analyze_and_respond(user_id, session_id, transcript, audio_path=None)
-        
         return jsonify(result)
     except KeyError as e:
         return jsonify({"error": f"Missing key in request: {e}"}), 400
@@ -184,7 +134,7 @@ def handle_text():
         return jsonify({"error": "An internal error occurred"}), 500
 
 @app.route('/voice', methods=['POST'])
-@check_auth
+@require_auth
 def handle_voice():
     """Handles a voice-based message from the user."""
     try:
@@ -195,14 +145,12 @@ def handle_voice():
             return jsonify({"error": "No audio file in request"}), 400
             
         file = request.files['audio']
-        import uuid
         unique_filename = f"audio_{uuid.uuid4().hex[:8]}.wav"
         filepath = os.path.join(UPLOAD_FOLDER, unique_filename)
         file.save(filepath)
         
         _, transcript = record_audio_from_file(filepath)
         result = analyze_and_respond(user_id, session_id, transcript, audio_path=filepath)
-
         return jsonify(result)
     except KeyError as e:
         return jsonify({"error": f"Missing form data: {e}"}), 400
@@ -211,48 +159,31 @@ def handle_voice():
         return jsonify({"error": "An internal error occurred"}), 500
 
 @app.route('/history/<string:requested_user_id>', methods=['GET'])
-@check_auth
+@require_auth
 def get_sessions(requested_user_id):
     """Gets the list of all sessions for a user."""
     token_user_id = request.user_id
     
-    # Security check: Ensure the user is only requesting their own history.
     if token_user_id != requested_user_id:
-        return jsonify({"error": "Forbidden: You can only access your own history."}), 403
+        return jsonify({"error": "Unauthorized access to user history"}), 403
     
     try:
-        sessions = get_all_sessions(token_user_id)
+        sessions = get_all_sessions(requested_user_id)
         return jsonify({"sessions": sessions})
     except Exception as e:
-        print(f"🔥 Error fetching session list: {e}")
-        return jsonify({"error": "Could not retrieve session history"}), 500
+        print(f"🔥 Error fetching sessions: {e}")
+        return jsonify({"error": "Failed to fetch sessions"}), 500
 
 @app.route('/tts', methods=['POST'])
-def generate_tts():
-    """Generates TTS audio for the given text."""
+@require_auth
+def generate_tts_route():
+    """Generates TTS audio on-demand from provided text."""
     try:
         data = request.json
         text = data.get('text', '')
-        
         if not text:
             return jsonify({"error": "No text provided"}), 400
         
-        # Check if it's a manual user or Firebase user
-        auth_header = request.headers.get('Authorization')
-        manual_user_id = request.headers.get('X-User-ID')
-        
-        if auth_header and auth_header.startswith('Bearer '):
-            # Firebase user - verify token
-            id_token = auth_header.split('Bearer ')[1]
-            decoded_token = auth.verify_id_token(id_token)
-            user_id = decoded_token['uid']
-        elif manual_user_id:
-            # Manual user - just use the ID
-            user_id = manual_user_id
-        else:
-            return jsonify({"error": "Authentication required"}), 401
-        
-        # Generate TTS audio
         tts = gTTS(text=text, lang='en')
         mp3_fp = BytesIO()
         tts.write_to_fp(mp3_fp)
@@ -265,21 +196,20 @@ def generate_tts():
         return jsonify({"error": "Failed to generate audio"}), 500
 
 @app.route('/history/<string:requested_user_id>/<string:session_id>', methods=['GET'])
-@check_auth
+@require_auth
 def get_session_chat(requested_user_id, session_id):
-    """Gets the message history for a specific session."""
+    """Gets the chat history for a specific session."""
     token_user_id = request.user_id
     
-    # Security check: Ensure the user is only requesting their own history.
     if token_user_id != requested_user_id:
-        return jsonify({"error": "Forbidden: You can only access your own history."}), 403
-
+        return jsonify({"error": "Unauthorized access to session history"}), 403
+    
     try:
-        messages = get_session_messages(token_user_id, session_id)
+        messages = get_session_messages(requested_user_id, session_id)
         return jsonify({"messages": messages})
     except Exception as e:
         print(f"🔥 Error fetching session messages: {e}")
-        return jsonify({"error": "Could not retrieve messages for this session"}), 500
+        return jsonify({"error": "Failed to fetch session messages"}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=5000)

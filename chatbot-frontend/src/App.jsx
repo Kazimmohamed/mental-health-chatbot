@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './lib/firebase';
-import { getSessionHistory } from './lib/api'; // Corrected import
+import { getSessionHistory } from './lib/api';
 
 import Login from './components/Login';
 import Logout from './components/Logout';
@@ -14,48 +14,59 @@ import Button from './ui/Button';
 function App() {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [sessions, setSessions] = useState([]); // State for session history
+    const [sessions, setSessions] = useState([]);
     const [currentSessionId, setCurrentSessionId] = useState(null);
-    const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1024);
 
     useEffect(() => {
-        // This effect handles user authentication state changes
-        const unsub = onAuthStateChanged(auth, async (u) => {
-            if (u) {
-                setUser(u);
-                // ✅ FIX: When user logs in, fetch their session history
-                try {
-                    const userSessions = await getSessionHistory(u.uid);
-                    setSessions(userSessions);
-                } catch (error) {
-                    console.error("Failed to load sessions on auth change:", error);
-                    setSessions([]); // Reset on error
-                }
-            } else {
-                setUser(null);
-                setSessions([]); // Clear sessions on logout
+        const fetchSessions = async (currentUser) => {
+            if (!currentUser) return;
+            try {
+                const userSessions = await getSessionHistory(currentUser);
+                setSessions(userSessions);
+            } catch (error) {
+                console.error("Failed to load sessions:", error);
+                setSessions([]);
             }
+        };
+
+        // ✅ FIX: Check for a persisted manual user session on initial load
+        const manualUserId = localStorage.getItem("customUserID");
+        if (manualUserId && localStorage.getItem("isManualUser") === "true") {
+            const manualUser = {
+                uid: manualUserId,
+                displayName: `User ${manualUserId.substring(0, 5)}...`,
+                isManualUser: true,
+            };
+            setUser(manualUser);
+            fetchSessions(manualUser);
             setLoading(false);
+        }
+
+        // This listener will handle Firebase auth state and will not interfere with the manual user check
+        const unsub = onAuthStateChanged(auth, (u) => {
+            // Only act if a manual user hasn't already been set
+            if (!localStorage.getItem("isManualUser")) {
+                setUser(u);
+                if (u) {
+                    fetchSessions(u);
+                }
+                setLoading(false);
+            }
         });
 
-        // Handle manual user login
         const handleManualLogin = (event) => {
             const manualUser = event.detail;
             setUser(manualUser);
+            fetchSessions(manualUser);
             setLoading(false);
         };
 
         window.addEventListener('manualUserLogin', handleManualLogin);
 
-        // This effect handles responsive sidebar visibility
         const handleResize = () => {
-            if (window.innerWidth < 1024) {
-                setSidebarOpen(false);
-            } else {
-                setSidebarOpen(true);
-            }
+            setSidebarOpen(window.innerWidth >= 1024);
         };
-        handleResize();
         window.addEventListener('resize', handleResize);
 
         return () => {
@@ -99,7 +110,7 @@ function App() {
 
     return (
         <Router>
-            <div className="flex h-screen overflow-hidden bg-gradient-to-br from-indigo-50 to-purple-50">
+            <div className="h-screen overflow-hidden bg-gradient-to-br from-indigo-50 to-purple-50">
                 <Routes>
                     <Route path="/" element={user ? <Navigate to="/chat" /> : <Navigate to="/login" />} />
                     <Route path="/login" element={!user ? <Login /> : <Navigate to="/chat" />} />
@@ -108,17 +119,16 @@ function App() {
                         path="/chat"
                         element={
                             user ? (
-                                <div className="flex w-full h-full">
+                                <div className="flex h-full w-full">
                                     <Sidebar
                                         isOpen={sidebarOpen}
                                         onClose={() => setSidebarOpen(false)}
                                         onNewChat={startNewChat}
                                         onSelectChat={selectChat}
-                                        sessions={sessions} // Pass fetched sessions
-                                        user={user} // Pass user for display if needed
+                                        sessions={sessions}
+                                        user={user}
                                     />
-                                    <div className={`flex-1 flex flex-col min-h-0 transition-all duration-300 ease-in-out ${sidebarOpen ? 'lg:ml-80' : 'lg:ml-0'}`}>
-                                        {/* ✅ UI RESTORED: Top Navigation Bar */}
+                                    <main className={`flex-1 flex flex-col transition-all duration-300 ease-in-out ${sidebarOpen ? 'lg:ml-80' : 'lg:ml-0'}`}>
                                         <div className="bg-white/80 backdrop-blur-md border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between shadow-sm flex-shrink-0">
                                             <div className="flex items-center space-x-4">
                                                 <button onClick={toggleSidebar} className="p-2 rounded-lg hover:bg-indigo-50 transition-colors">
@@ -135,11 +145,11 @@ function App() {
                                                 </div>
                                                 <div className="flex items-center space-x-2">
                                                     <div className="bg-gradient-to-r from-indigo-400 to-purple-500 w-10 h-10 rounded-full flex items-center justify-center text-white font-bold">
-                                                        {user.displayName ? user.displayName.charAt(0) : 'U'}
+                                                        {user.displayName ? user.displayName.charAt(0).toUpperCase() : 'U'}
                                                     </div>
                                                     <div className="hidden md:block">
-                                                        <p className="text-sm font-medium text-gray-700">{user.displayName || 'User'}</p>
-                                                        <p className="text-xs text-gray-500 truncate max-w-[120px]">{user.email}</p>
+                                                        <p className="text-sm font-medium text-gray-700">{user.displayName || `User ${user.uid.substring(0, 5)}`}</p>
+                                                        <p className="text-xs text-gray-500 truncate max-w-[120px]">{user.email || 'Manual User'}</p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -151,7 +161,7 @@ function App() {
                                                 setSessionId={setCurrentSessionId}
                                             />
                                         </div>
-                                    </div>
+                                    </main>
                                 </div>
                             ) : <Navigate to="/login" />
                         }

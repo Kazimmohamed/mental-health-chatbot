@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { HiPaperAirplane, HiMicrophone, HiOutlineEmojiHappy } from 'react-icons/hi'; // Import the emoji icon
+import React, { useState, useRef, useEffect, memo, useCallback } from 'react';
+import { HiPaperAirplane, HiMicrophone, HiOutlineEmojiHappy } from 'react-icons/hi';
 import Button from "../ui/button";
-import EmojiPicker from 'emoji-picker-react'; // Import the emoji picker
+import EmojiPicker from 'emoji-picker-react';
 
-const InputBar = ({ 
+const InputBar = memo(({ 
   onSendMessage, 
   disabled, 
   placeholder = "Type your message...",
@@ -13,36 +13,52 @@ const InputBar = ({
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeechSupported, setIsSpeechSupported] = useState(true);
   const [permissionError, setPermissionError] = useState(false);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false); // ✅ State for emoji picker visibility
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const textareaRef = useRef(null);
   const recognitionRef = useRef(null);
 
-  // Check for speech recognition support
+  const handleSubmit = useCallback((e) => {
+    e.preventDefault();
+    if (message.trim() && !disabled) {
+      onSendMessage(message.trim());
+      setMessage('');
+      setShowEmojiPicker(false);
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+    }
+  }, [message, disabled, onSendMessage]);
+
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      console.log('Speech recognition not supported in this browser');
       setIsSpeechSupported(false);
       return;
     }
 
-    console.log('Speech recognition supported, initializing...');
     recognitionRef.current = new SpeechRecognition();
     recognitionRef.current.continuous = false;
     recognitionRef.current.interimResults = false;
     recognitionRef.current.lang = 'en-US';
 
     recognitionRef.current.onresult = (event) => {
-      console.log('Speech recognition result:', event.results);
       const transcript = event.results[0][0].transcript;
-      console.log('Transcript:', transcript);
       setMessage(prev => prev + transcript);
       
       if (autoSendOnVoice) {
-        setTimeout(() => {
-          handleSubmit(new Event('submit'));
-        }, 500);
+        // Use a form submission to trigger handleSubmit
+        const form = textareaRef.current.closest('form');
+        if (form) {
+          form.requestSubmit();
+        }
       }
+    };
+
+    const stopRecording = () => {
+        if (recognitionRef.current) {
+            recognitionRef.current.stop();
+        }
+        setIsRecording(false);
     };
 
     recognitionRef.current.onerror = (event) => {
@@ -54,12 +70,7 @@ const InputBar = ({
     };
 
     recognitionRef.current.onend = () => {
-      console.log('Speech recognition ended');
       stopRecording();
-    };
-
-    recognitionRef.current.onstart = () => {
-      console.log('Speech recognition started');
     };
 
     return () => {
@@ -67,20 +78,15 @@ const InputBar = ({
         recognitionRef.current.stop();
       }
     };
-  }, [autoSendOnVoice]);
+  }, [autoSendOnVoice, handleSubmit]);
 
   const startRecording = () => {
-    console.log('Attempting to start recording...');
-    if (!isSpeechSupported) {
-      console.log('Speech not supported');
-      return;
-    }
+    if (!isSpeechSupported) return;
     
     try {
       recognitionRef.current.start();
       setIsRecording(true);
       setPermissionError(false);
-      console.log('Recording started successfully');
     } catch (error) {
       console.error('Failed to start recording:', error);
       setPermissionError(true);
@@ -89,31 +95,17 @@ const InputBar = ({
   };
 
   const stopRecording = () => {
-    console.log('Stopping recording...');
-    if (recognitionRef.current && isRecording) {
+    if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
     setIsRecording(false);
   };
 
   const toggleRecording = () => {
-    console.log('Toggle recording, current state:', isRecording);
     if (isRecording) {
       stopRecording();
     } else {
       startRecording();
-    }
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (message.trim() && !disabled) {
-      onSendMessage(message.trim());
-      setMessage('');
-      setShowEmojiPicker(false); // Hide picker on send
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-      }
     }
   };
 
@@ -129,25 +121,21 @@ const InputBar = ({
     
     const textarea = e.target;
     textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
   };
 
-  // ✅ Function to add emoji to the message
   const onEmojiClick = (emojiObject) => {
     setMessage(prevMessage => prevMessage + emojiObject.emoji);
-    setShowEmojiPicker(false); // Hide picker after selection
+    setShowEmojiPicker(false);
     textareaRef.current.focus();
   };
 
   return (
-    <div className="w-full relative"> {/* ✅ Added relative positioning for the picker */}
-      
-      {/* ✅ Emoji Picker Component */}
+    <div className="w-full relative">
       {showEmojiPicker && (
-        <div className="absolute bottom-full mb-2 right-0">
+        <div className="absolute bottom-full mb-2 right-0 z-10">
             <EmojiPicker 
                 onEmojiClick={onEmojiClick}
-                pickerStyle={{ width: '100%', boxShadow: '0 5px 15px rgba(0,0,0,0.1)' }}
             />
         </div>
       )}
@@ -171,7 +159,6 @@ const InputBar = ({
           />
           
           <div className="absolute right-3 bottom-3 flex space-x-1">
-             {/* ✅ Emoji Button */}
             <Button
                 type="button"
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
@@ -184,7 +171,6 @@ const InputBar = ({
                 <HiOutlineEmojiHappy className="h-5 w-5" />
             </Button>
 
-            {/* Microphone Button */}
             {isSpeechSupported && (
               <Button
                 type="button"
@@ -203,7 +189,6 @@ const InputBar = ({
               </Button>
             )}
             
-            {/* Send Button */}
             <Button
               type="submit"
               disabled={!message.trim() || disabled}
@@ -252,6 +237,8 @@ const InputBar = ({
       </div>
     </div>
   );
-};
+});
+
+InputBar.displayName = 'InputBar';
 
 export default InputBar;

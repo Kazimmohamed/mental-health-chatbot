@@ -1,29 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  getAuth,
-  GoogleAuthProvider,
-  signInWithPopup,
-  signInAnonymously
-} from "firebase/auth";
-import { initializeApp } from "firebase/app";
+import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { auth } from '../lib/firebase'; // ✅ IMPROVEMENT: Import auth instance directly
 import { FcGoogle } from "react-icons/fc";
 import Button from '../ui/Button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../ui/Card';
 import Input from '../ui/input';
 
-// Firebase Config from .env
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-};
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
 export default function Login() {
@@ -37,6 +20,7 @@ export default function Login() {
     try {
       setIsLoading(true);
       await signInWithPopup(auth, provider);
+      // The onAuthStateChanged listener in App.jsx will handle navigation
     } catch (err) {
       console.error("Google Sign-In Error:", err);
       setError("🚫 Login failed. Please try again.");
@@ -62,21 +46,19 @@ export default function Login() {
       const data = await res.json();
 
       if (res.ok && data.user_id) {
-        // Store the manual user ID and create a custom user object
         localStorage.setItem("customUserID", data.user_id);
         localStorage.setItem("isManualUser", "true");
         
-        // Create a custom user object for manual users
         const manualUser = {
           uid: data.user_id,
           email: null,
-          displayName: `User ${data.user_id}`,
+          displayName: `User ${data.user_id.substring(0, 8)}...`,
           isAnonymous: false,
           isManualUser: true
         };
         
-        // Trigger a custom event to notify the app about manual login
         window.dispatchEvent(new CustomEvent('manualUserLogin', { detail: manualUser }));
+        // The App.jsx listener will handle navigation
       } else {
         throw new Error(data.error || "Invalid user ID or failed to create user.");
       }
@@ -89,7 +71,6 @@ export default function Login() {
   };
 
   return (
-    // ✅ THIS IS THE DIV THAT WAS CHANGED. It now centers everything inside it.
     <div className="w-full h-full flex items-center justify-center p-4">
       <Card className="w-full max-w-md border border-gray-200 shadow-2xl rounded-2xl overflow-hidden bg-white/80 backdrop-blur-sm">
         <CardHeader className="text-center py-6">
@@ -198,3 +179,4 @@ export default function Login() {
     </div>
   );
 }
+
