@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { sendMessageToBackend, generateTTS } from '../lib/api';
+import { sendMessageToBackend, generateTTS, sendVoiceMessageToBackend } from '../lib/api';
 import MessageBubble from './MessageBubble';
 import InputBar from './InputBar';
 import { Card, CardContent } from '../ui/card';
-// ✅ AESTHETIC CHANGE: Added HiChatAlt2 for the new prompt buttons
 import { HiHeart, HiSparkles, HiChatAlt2 } from 'react-icons/hi';
 
 async function createNewSession(user) {
@@ -70,16 +69,31 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
 
   const playAudio = useCallback(async (text) => {
     try {
-      const { audio_base_64 } = await generateTTS(user, text);
-      const audio = new Audio("data:audio/mp3;base64," + audio_base_64);
-      await audio.play();
+      const { audio_base64 } = await generateTTS(user, text);
+      
+      // Create audio element with proper MIME type
+      const audio = new Audio(`data:audio/mpeg;base64,${audio_base64}`);
+      
+      // Handle playback errors
+      audio.addEventListener('error', (e) => {
+        console.error('Audio playback error:', e);
+      });
+      
+      // Play the audio
+      const playPromise = audio.play();
+      
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          console.error('Playback failed:', error);
+        });
+      }
     } catch (error) {
       console.error('Failed to generate or play audio:', error);
     }
   }, [user]);
 
-  const sendMessage = useCallback(async (text) => {
-    const inputText = text.trim();
+  const sendMessage = useCallback(async (messageData) => {
+    const inputText = messageData.text.trim();
     if (!inputText || !user) return;
 
     setSending(true);
@@ -96,23 +110,30 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
       const userId = user.uid;
       const messagesCol = collection(db, 'conversations', userId, 'sessions', currentSessionId, 'messages');
 
+      // Add user message to Firestore
       await addDoc(messagesCol, {
         text: inputText,
         sender: 'user',
         created_at: serverTimestamp(),
       });
       
-      const { reply, title } = await sendMessageToBackend(user, currentSessionId, inputText);
+      // Determine which backend endpoint to call
+      let response;
+      if (messageData.audioBlob) {
+        response = await sendVoiceMessageToBackend(user, currentSessionId, messageData.audioBlob);
+      } else {
+        response = await sendMessageToBackend(user, currentSessionId, inputText);
+      }
 
+      // Add bot response to Firestore
       await addDoc(messagesCol, {
-        text: reply,
+        text: response.reply,
         sender: 'bot',
         created_at: serverTimestamp(),
       });
 
+      // Update session timestamp
       const sessionDocRef = doc(db, 'conversations', userId, 'sessions', currentSessionId);
-      // The backend now handles title updates, but we still update the timestamp
-      // to ensure the session moves to the top of the list.
       await updateDoc(sessionDocRef, { last_updated: serverTimestamp() });
       
     } catch (err) {
@@ -146,16 +167,14 @@ const ChatWindow = ({ user, sessionId, setSessionId }) => {
         <Card className="border-0 shadow-sm bg-gray-50/50">
           <CardContent className="p-4">
             <div className="flex items-center justify-center mb-3">
-              {/* ✅ AESTHETIC CHANGE: Replaced emoji with professional icon */}
               <HiSparkles className="h-5 w-5 text-yellow-500 mr-2" />
               <span className="font-medium text-gray-700">Quick prompts to get started</span>
             </div>
             <div className="space-y-3">
               {["I'm feeling anxious about something","I need someone to talk to","I'm having a tough day"].map((preset) => (
-                // ✅ AESTHETIC CHANGE: Restyled prompts to look like distinct buttons
                 <button
                   key={preset}
-                  onClick={() => sendMessage(preset)}
+                  onClick={() => sendMessage({ text: preset })}
                   className="w-full text-left px-4 py-3 bg-white border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-300 transition-all duration-200 flex items-center group"
                 >
                   <HiChatAlt2 className="h-5 w-5 mr-3 text-indigo-400 group-hover:text-indigo-600 transition-colors" />

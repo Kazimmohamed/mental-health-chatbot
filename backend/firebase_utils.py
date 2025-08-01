@@ -1,6 +1,5 @@
-# FILE: firebase_utils.py (Corrected & Upgraded)
-# This file now includes a new function to get a single session's details.
-# =================================================================================
+# backend/firebase_utils.py
+# backend/firebase_utils.py
 
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -8,7 +7,6 @@ import uuid
 from datetime import datetime
 
 # --- Firebase Initialization ---
-# Ensure the path to your service account key is correct.
 cred = credentials.Certificate(r"C:\Users\kazim\Documents\VScodeprojects\new poject\firebase_key.json.json")
 
 if not firebase_admin._apps:
@@ -19,20 +17,14 @@ db = firestore.client()
 # --- User and Session Management Functions ---
 
 def ensure_user_exists(user_id):
-    """
-    Checks if a user document exists for the given Firebase UID.
-    If not, it creates a new one.
-    """
     user_ref = db.collection("conversations").document(user_id)
     if not user_ref.get().exists:
-        print(f"✅ DEBUG: New user detected. Creating document for UID: {user_id}")
         user_ref.set({
             "created_at": firestore.SERVER_TIMESTAMP,
             "status": "active"
         })
 
 def create_new_session(user_id):
-    """Creates a new chat session for a given user with a default title."""
     session_id = f"session-{str(uuid.uuid4())[:8]}"
     session_ref = db.collection("conversations").document(user_id).collection("sessions").document(session_id)
     session_ref.set({
@@ -40,90 +32,83 @@ def create_new_session(user_id):
         "last_updated": firestore.SERVER_TIMESTAMP,
         "title": "Untitled Session"
     })
-    print(f"DEBUG: New session created: {session_id} for user {user_id}")
     return session_id
 
-def save_message_to_session(user_id, session_id, input_text, gpt_response, text_emotion, tone_emotion):
-    """Saves a message to a specific session in Firestore."""
+def save_interaction_to_session(user_id, session_id, user_input, gpt_response, text_emotion, tone_emotion):
+    """Saves a complete user-bot interaction as a single document"""
     try:
         session_ref = db.collection("conversations").document(user_id).collection("sessions").document(session_id)
         session_ref.update({"last_updated": firestore.SERVER_TIMESTAMP})
         
-        message_ref = session_ref.collection("messages")
-        message_ref.add({
-            "input_text": input_text,
+        # Create interaction document with the exact structure
+        interaction_ref = session_ref.collection("interactions").document()
+        interaction_ref.set({
+            "created_at": datetime.utcnow(),
+            "user_input": user_input,
             "gpt_response": gpt_response,
-            "text_emotion": text_emotion,
-            "tone_emotion": tone_emotion,
-            "created_at": datetime.utcnow()
+            "text_emotion": {
+                "label": text_emotion["label"],
+                "score": float(text_emotion["score"])
+            },
+            "tone_emotion": {
+                "label": tone_emotion["label"],
+                "score": float(tone_emotion["score"])
+            }
         })
-        print(f"DEBUG: Message saved for session {session_id}")
+        return True
     except Exception as e:
-        print(f"🔥 ERROR in save_message_to_session: {e}")
+        print(f"🔥 ERROR saving interaction: {e}")
+        return False
 
 def get_all_sessions(user_id):
-    """Retrieves all of a user's sessions, sorted by most recently updated."""
     try:
         sessions_ref = db.collection("conversations").document(user_id).collection("sessions") \
                          .order_by("last_updated", direction=firestore.Query.DESCENDING)
-        docs = sessions_ref.stream()
-        sessions = []
-        for doc in docs:
-            data = doc.to_dict()
-            sessions.append({
-                "session_id": doc.id,
-                "title": data.get("title", "Untitled"),
-                "created_at": data.get("created_at"),
-                "last_updated": data.get("last_updated")
-            })
-        return sessions
+        return [{
+            "session_id": doc.id,
+            "title": doc.to_dict().get("title", "Untitled"),
+            "created_at": doc.to_dict().get("created_at"),
+            "last_updated": doc.to_dict().get("last_updated")
+        } for doc in sessions_ref.stream()]
     except Exception as e:
-        print(f"🔥 ERROR in get_all_sessions: {e}")
+        print(f"🔥 ERROR getting sessions: {e}")
         return []
 
-def get_session_messages(user_id, session_id):
-    """Retrieves all messages from a specific session, sorted by time."""
+def get_session_interactions(user_id, session_id):
+    """Retrieves all interactions from a session in chronological order"""
     try:
-        messages_ref = db.collection("conversations").document(user_id).collection("sessions") \
-                         .document(session_id).collection("messages") \
-                         .order_by("created_at", direction=firestore.Query.ASCENDING)
-        docs = messages_ref.stream()
-        return [doc.to_dict() for doc in docs]
+        interactions_ref = db.collection("conversations").document(user_id).collection("sessions") \
+                             .document(session_id).collection("interactions") \
+                             .order_by("created_at", direction=firestore.Query.ASCENDING)
+        return [doc.to_dict() for doc in interactions_ref.stream()]
     except Exception as e:
-        print(f"🔥 ERROR in get_session_messages: {e}")
+        print(f"🔥 ERROR getting interactions: {e}")
         return []
 
 def get_session_details(user_id, session_id):
-    """Retrieves the data for a single session document."""
     try:
         session_ref = db.collection("conversations").document(user_id).collection("sessions").document(session_id)
         doc = session_ref.get()
-        if doc.exists:
-            return doc.to_dict()
-        else:
-            print(f"⚠️ WARNING: Session document {session_id} not found for user {user_id}.")
-            return None
+        return doc.to_dict() if doc.exists else None
     except Exception as e:
-        print(f"🔥 ERROR in get_session_details: {e}")
+        print(f"🔥 ERROR getting session details: {e}")
         return None
 
 def update_session_title(user_id, session_id, title):
-    """
-    Updates the 'title' field of a specific session document.
-    """
     try:
         session_ref = db.collection("conversations").document(user_id).collection("sessions").document(session_id)
         session_ref.update({"title": title})
-        print(f"DEBUG: Session title updated for {session_id} to '{title}'")
+        return True
     except Exception as e:
-        print(f"🔥 ERROR in update_session_title: {e}")
+        print(f"🔥 ERROR updating title: {e}")
+        return False
 
 __all__ = [
     'ensure_user_exists',
     'create_new_session',
-    'save_message_to_session',
+    'save_interaction_to_session',
     'get_all_sessions',
-    'get_session_messages',
+    'get_session_interactions',
     'get_session_details',
     'update_session_title',
     'db'
