@@ -1,4 +1,6 @@
+// Sidebar.jsx 
 import React from 'react';
+import { Link } from 'react-router-dom'; // ✅ Added Link import for navigation
 // ✅ AESTHETIC CHANGE: Using a more professional icon from the existing library
 import { HiPlus, HiChat, HiOutlineSparkles } from 'react-icons/hi';
 import Button from "../ui/button";
@@ -77,26 +79,22 @@ const Sidebar = ({ isOpen, onClose, onNewChat, onSelectChat, sessions, currentSe
                                             key={session.session_id}
                                             onClick={() => onSelectChat(session.session_id)}
                                             // ✅ AESTHETIC CHANGE: Apply conditional styling for the active chat
-                                            className={`w-full text-left p-4 rounded-xl transition-all duration-200 border group ${
-                                                isActive 
-                                                    ? 'bg-indigo-100 border-indigo-200 shadow-md' 
+                                            className={`w-full text-left p-4 rounded-xl transition-all duration-200 border group ${isActive
+                                                    ? 'bg-indigo-100 border-indigo-200 shadow-md'
                                                     : 'bg-white border-indigo-100 hover:shadow-lg'
-                                            }`}
+                                                }`}
                                         >
                                             <div className="flex items-start space-x-3">
-                                                <div className={`flex-shrink-0 w-3 h-3 rounded-full mt-2 transition-colors ${
-                                                    isActive ? 'bg-indigo-500' : 'bg-gradient-to-r from-indigo-400 to-purple-500'
-                                                }`}></div>
+                                                <div className={`flex-shrink-0 w-3 h-3 rounded-full mt-2 transition-colors ${isActive ? 'bg-indigo-500' : 'bg-gradient-to-r from-indigo-400 to-purple-500'
+                                                    }`}></div>
                                                 <div className="flex-1 min-w-0">
-                                                    <SessionTitle 
-                                                        title={session.title} 
-                                                        className={`text-sm font-medium transition-colors truncate ${
-                                                            isActive ? 'text-indigo-700' : 'text-gray-800 group-hover:text-indigo-600'
-                                                        }`} 
+                                                    <SessionTitle
+                                                        title={session.title}
+                                                        className={`text-sm font-medium transition-colors truncate ${isActive ? 'text-indigo-700' : 'text-gray-800 group-hover:text-indigo-600'
+                                                            }`}
                                                     />
-                                                    <p className={`text-xs mt-1 transition-colors ${
-                                                        isActive ? 'text-indigo-500' : 'text-gray-500'
-                                                    }`}>
+                                                    <p className={`text-xs mt-1 transition-colors ${isActive ? 'text-indigo-500' : 'text-gray-500'
+                                                        }`}>
                                                         {formatDate(session.last_updated)}
                                                     </p>
                                                 </div>
@@ -107,6 +105,20 @@ const Sidebar = ({ isOpen, onClose, onNewChat, onSelectChat, sessions, currentSe
                             </div>
                         )}
                     </div>
+
+                    {/* ✅ NEW FUNCTIONALITY: Link to Portfolio Page */}
+                    <div className="p-4 border-t border-indigo-100">
+                        <Link
+                            to="/portfolio"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center space-x-2 w-full p-3 rounded-xl text-gray-600 hover:bg-indigo-100 hover:text-indigo-700 transition-colors"
+                        >
+                            <HiOutlineSparkles className="h-5 w-5" />
+                            <span>About This Project</span>
+                        </Link>
+                    </div>
+
                 </div>
             </div>
         </>
