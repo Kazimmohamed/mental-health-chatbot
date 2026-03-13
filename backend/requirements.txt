@@ -20,4 +20,5 @@ SpeechRecognition
 gTTS
 
 # Utilities
-python-dotenv
+python-dotenv"gunicorn" 
+"pydantic==2.7.4" 
