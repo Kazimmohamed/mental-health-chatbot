@@ -1,0 +1,25 @@
+# Web Framework
+Flask
+Flask-Cors
+
+# Firebase Integration
+firebase-admin
+
+# OpenAI API
+openai
+
+# Google Gemini API
+google-generativeai
+
+# HuggingFace Transformers for Local AI/ML
+transformers
+torch
+
+# Voice and Audio Processing
+SpeechRecognition
+gTTS
+
+# Utilities
+python-dotenv
+gunicorn
+pydantic==2.7.4
