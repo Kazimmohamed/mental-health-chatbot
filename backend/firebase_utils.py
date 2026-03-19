@@ -16,33 +16,29 @@ import traceback
 import os
 import json
 
+
 # ==============================================================
 # 1️⃣ Firebase Initialization
 # ==============================================================
 
 try:
     if not firebase_admin._apps:
-        firebase_key_json = os.environ.get("FIREBASE_KEY_JSON")
-        
-        if firebase_key_json:
-            # Production (Render) — read from environment variable
-            cred_dict = json.loads(firebase_key_json)
-            cred = credentials.Certificate(cred_dict)
-        else:
-            # Local development — read from file
-            cred = credentials.Certificate(
-                r"C:\Users\kazim\Downloads\mindmate-b420b-firebase-adminsdk-fbsvc-b3801a9502.json"
-            )
-        
+        # Render secret file path
+        render_key_path = "/etc/secrets/firebase_key.json"
+        # Local path
+        local_key_path = r"C:\Users\kazim\Downloads\mindmate-b420b-firebase-adminsdk-fbsvc-b3801a9502.json"
+
+        key_path = render_key_path if os.path.exists(render_key_path) else local_key_path
+
+        cred = credentials.Certificate(key_path)
         firebase_admin.initialize_app(cred)
-    
+
     db = firestore.client()
     print("✅ [Firebase] Connection established successfully.")
 
 except Exception as e:
     print(f"🔥 [Firebase Init Error]: {traceback.format_exc()}")
     raise SystemExit("Failed to initialize Firebase connection.")
-
 # ==============================================================
 # 2️⃣ Helper: Timestamp Generator
 # ==============================================================
